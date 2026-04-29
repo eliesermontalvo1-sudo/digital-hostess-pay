@@ -38,7 +38,7 @@
         }
 
         // We will create this webhook in the next step
-        const response = await fetch(`https://hook.us2.make.com/YOUR_FETCH_WEBHOOK?id=${orderId}`);
+        const response = await fetch(`https://hook.us2.make.com/lq54xriqlh8eyrsiihc58i5ga4kc45ry?id=${orderId}`);
         const data = await response.json();
 
         document.getElementById('customer-name').innerText = `For ${data.customerName}`;
