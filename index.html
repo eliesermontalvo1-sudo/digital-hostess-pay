@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure Checkout | Digital Hostess</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f9f9f9; display: flex; justify-content: center; padding: 20px; }
+        .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); max-width: 400px; width: 100%; text-align: center; }
+        h1 { font-size: 24px; color: #1a1a1a; margin-bottom: 8px; }
+        .amount { font-size: 32px; font-weight: bold; margin: 20px 0; color: #2ecc71; }
+        #i4go-iframe { width: 100%; height: 350px; border: none; margin-top: 20px; }
+        .loading { color: #888; font-style: italic; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h1>Complete Your Order</h1>
+    <p id="customer-name" class="loading">Loading order details...</p>
+    <div id="order-total" class="amount">$0.00</div>
+    
+    <div id="payment-container">
+        <iframe id="i4go-iframe" name="i4go-iframe"></iframe>
+    </div>
+</div>
+
+<script>
+    // 1. Get the ID from the URL link Mia sent
+    const urlParams = new URLSearchParams(window.location.search);
+    const orderId = urlParams.get('id');
+
+    // 2. Ask Make.com for the order details using the ID
+    async function loadOrder() {
+        if (!orderId) {
+            document.body.innerHTML = "<h1>Error: No order ID found.</h1>";
+            return;
+        }
+
+        // We will create this webhook in the next step
+        const response = await fetch(`https://hook.us2.make.com/YOUR_FETCH_WEBHOOK?id=${orderId}`);
+        const data = await response.json();
+
+        document.getElementById('customer-name').innerText = `For ${data.customerName}`;
+        document.getElementById('order-total').innerText = `$${(data.totalAmount / 100).toFixed(2)}`;
+
+        // 3. Initialize the Shift4 iFrame (i4Go)
+        // This tells Shift4: "Ready to accept a card for this specific order"
+        document.getElementById('i4go-iframe').src = data.i4goUrl;
+    }
+
+    loadOrder();
+</script>
+
+</body>
+</html>
