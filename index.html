@@ -54,7 +54,7 @@
             document.getElementById('customer-name').innerText = `For ${data.customerName}`;
             document.getElementById('order-total').innerText = `$${(data.totalAmount / 100).toFixed(2)}`;
 
-            // Build Receipt
+            // Build Receipt logic
             let orderData = data.items;
             if (typeof orderData === 'string') orderData = JSON.parse(orderData);
             if (orderData && orderData.lineItems) {
@@ -65,19 +65,19 @@
                 document.getElementById('items-container').style.display = 'block';
             }
 
-            // Initialize i4Go
+            // Initialize i4Go with required 'self' parameter
             $("#i4goFrame").i4goTrueToken({
                 url: data.i4goUrl,
                 server: data.i4goServer,
                 accessBlock: data.accessBlock,
                 template: "bootstrap4",
                 submitButton: { label: "Place Order" },
+                self: document.location, // The missing piece
                 onSuccess: function(form, response) {
                     document.getElementById('order-ui').style.display = 'none';
                     document.getElementById('success-container').style.display = 'block';
 
-                    // --- LEGACY EXPIRATION LOGIC ---
-                    // Grab native fields: i4go_expirationmonth & i4go_expirationyear
+                    // Legacy Expiration Formatting
                     let month = (response.i4go_expirationmonth || "").toString().padStart(2, '0');
                     let year = (response.i4go_expirationyear || "").toString().slice(-2);
                     let formattedExp = (month && year) ? (month + year) : "";
@@ -92,6 +92,9 @@
                             invoiceId: orderId
                         })
                     });
+                },
+                onFailure: function(form, response) {
+                    alert("Payment Error: " + response.i4go_responsetext);
                 }
             });
         } catch (error) { console.error("Order Load Failed:", error); }
