@@ -12,14 +12,10 @@
         .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); max-width: 450px; width: 100%; text-align: center; }
         h1 { font-size: 24px; color: #1a1a1a; margin-bottom: 8px; }
         .amount { font-size: 32px; font-weight: bold; margin: 15px 0; color: #2ecc71; }
-        
         .items-list { text-align: left; background: #fcfcfc; border: 1px solid #eee; border-radius: 8px; padding: 15px; margin-bottom: 20px; font-size: 14px; color: #444; }
         .items-list h3 { margin-top: 0; font-size: 16px; color: #888; border-bottom: 1px solid #eee; padding-bottom: 8px; margin-bottom: 10px; }
-        
-        /* Receipt Styling */
         .item-row { display: flex; justify-content: space-between; font-weight: 600; margin-top: 10px; }
         .modifier-row { font-size: 12px; color: #888; padding-left: 15px; font-style: italic; }
-        
         #i4goFrame { width: 100%; min-height: 350px; margin-top: 20px; border-radius: 8px; overflow: hidden; }
         .loading { color: #888; font-style: italic; }
     </style>
@@ -57,35 +53,27 @@
             document.getElementById('order-total').innerText = `$${(data.totalAmount / 100).toFixed(2)}`;
             document.getElementById('customer-name').classList.remove('loading');
 
-            // --- Logic to parse the complex OrderDetails JSON ---
-            if (data.items) {
-                const orderData = typeof data.items === 'string' ? JSON.parse(data.items) : data.items;
-                const content = document.getElementById('items-content');
-                content.innerHTML = ''; // Clear previous
-
-                if (orderData.lineItems) {
-                    orderData.lineItems.forEach(item => {
-                        // Add main item
-                        let itemHtml = `<div class="item-row">
-                            <span>${item.quantity}x ${item.name}</span>
-                            <span>$${(item.price / 100).toFixed(2)}</span>
-                        </div>`;
-                        
-                        // Add modifiers (Temp, Sides, etc.)
-                        if (item.lineModifierSets) {
-                            item.lineModifierSets.forEach(set => {
-                                set.lineModifiers.forEach(mod => {
-                                    itemHtml += `<div class="modifier-row">+ ${mod.name}</div>`;
-                                });
-                            });
-                        }
-                        content.innerHTML += itemHtml;
-                    });
-                    document.getElementById('items-container').style.display = 'block';
-                }
+            // --- Robust JSON Parsing ---
+            let orderData = data.items;
+            if (typeof orderData === 'string') {
+                try { orderData = JSON.parse(orderData); } catch(e) { console.error("Item Parse Error", e); }
             }
 
-            // Initialize Shift4
+            if (orderData && orderData.lineItems) {
+                const content = document.getElementById('items-content');
+                content.innerHTML = ''; 
+                orderData.lineItems.forEach(item => {
+                    let itemHtml = `<div class="item-row"><span>${item.quantity}x ${item.name}</span><span>$${(item.price / 100).toFixed(2)}</span></div>`;
+                    if (item.lineModifierSets) {
+                        item.lineModifierSets.forEach(set => {
+                            set.lineModifiers.forEach(mod => { itemHtml += `<div class="modifier-row">+ ${mod.name}</div>`; });
+                        });
+                    }
+                    content.innerHTML += itemHtml;
+                });
+                document.getElementById('items-container').style.display = 'block';
+            }
+
             $("#i4goFrame").i4goTrueToken({
                 url: data.i4goUrl,
                 server: data.i4goServer,
@@ -102,9 +90,7 @@
             console.error("Order Load Failed:", error);
         }
     }
-
     loadOrder();
 </script>
-
 </body>
 </html>
