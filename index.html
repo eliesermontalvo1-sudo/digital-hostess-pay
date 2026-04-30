@@ -98,8 +98,20 @@
                 self: document.location,
                 frameAutoResize: true,
                 onSuccess: function(form, response) {
+                    // 1. Visually confirm the order for the customer
                     document.getElementById('order-ui').style.display = 'none';
                     document.getElementById('success-container').style.display = 'block';
+
+                    // 2. Send the token to your Final Charge Scenario in Make.com
+                    fetch('PASTE_YOUR_NEW_CHARGE_WEBHOOK_URL_HERE', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            tokenId: response.i4go_uniqueid,
+                            totalAmount: data.totalAmount, 
+                            invoiceId: orderId
+                        })
+                    });
                 },
                 onFailure: function(form, response) {
                     alert("Payment Error: " + response.i4go_responsetext);
