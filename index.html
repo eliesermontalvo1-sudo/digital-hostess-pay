@@ -9,24 +9,29 @@
     
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f9f9f9; display: flex; justify-content: center; padding: 20px; }
-        .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); max-width: 450px; width: 100%; text-align: center; transition: all 0.3s ease; }
+        .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); max-width: 450px; width: 100%; text-align: center; }
         h1 { font-size: 24px; color: #1a1a1a; margin-bottom: 8px; }
         .amount { font-size: 32px; font-weight: bold; margin: 15px 0; color: #2ecc71; }
+        
+        /* Items List Styling */
         .items-list { text-align: left; background: #fcfcfc; border: 1px solid #eee; border-radius: 8px; padding: 15px; margin-bottom: 20px; font-size: 14px; color: #444; }
         .items-list h3 { margin-top: 0; font-size: 16px; color: #888; border-bottom: 1px solid #eee; padding-bottom: 8px; margin-bottom: 10px; }
         .item-row { display: flex; justify-content: space-between; font-weight: 600; margin-top: 10px; }
         .modifier-row { font-size: 12px; color: #888; padding-left: 15px; font-style: italic; }
-        #i4goFrame { width: 100%; min-height: 350px; margin-top: 20px; border-radius: 8px; overflow: hidden; }
-        .loading { color: #888; font-style: italic; }
 
-        /* Success Screen Styling */
+        /* Secure Form Container */
+        #i4goFrame { width: 100%; min-height: 350px; margin-top: 20px; border-radius: 8px; overflow: hidden; }
+        
+        /* Success Screen */
         #success-container { display: none; padding: 40px 20px; }
         .checkmark { font-size: 60px; color: #2ecc71; margin-bottom: 20px; }
+        
+        .loading { color: #888; font-style: italic; }
     </style>
 </head>
 <body>
 
-<div class="card" id="main-card">
+<div class="card">
     <div id="order-ui">
         <h1>Complete Your Order</h1>
         <p id="customer-name" class="loading">Loading order details...</p>
@@ -37,13 +42,14 @@
         </div>
 
         <div id="order-total" class="amount">$0.00</div>
+        
         <div id="i4goFrame"></div>
     </div>
 
     <div id="success-container">
         <div class="checkmark">✓</div>
-        <h1>Order Placed!</h1>
-        <p>Your payment information has been secured. The restaurant is preparing your order now.</p>
+        <h1>Order Successfully Paid!</h1>
+        <p>This order has already been processed and sent to the kitchen. Thank you!</p>
     </div>
 </div>
 
@@ -58,13 +64,23 @@
         }
 
         try {
+            // 1. Fetch data from Make.com
             const response = await fetch(`https://hook.us2.make.com/lq54xriqlh8eyrsiihc58i5ga4kc45ry?id=${orderId}`);
             const data = await response.json();
 
+            // 2. Check if the order is already marked as PAID
+            if (data.status === "PAID" || data.status === "COMPLETED") {
+                document.getElementById('order-ui').style.display = 'none';
+                document.getElementById('success-container').style.display = 'block';
+                return; 
+            }
+
+            // 3. Update the UI for an unpaid order
             document.getElementById('customer-name').innerText = `For ${data.customerName}`;
             document.getElementById('order-total').innerText = `$${(data.totalAmount / 100).toFixed(2)}`;
             document.getElementById('customer-name').classList.remove('loading');
 
+            // 4. Parse and display order items
             let orderData = data.items;
             if (typeof orderData === 'string') {
                 try { orderData = JSON.parse(orderData); } catch(e) { console.error("Item Parse Error", e); }
@@ -77,7 +93,9 @@
                     let itemHtml = `<div class="item-row"><span>${item.quantity}x ${item.name}</span><span>$${(item.price / 100).toFixed(2)}</span></div>`;
                     if (item.lineModifierSets) {
                         item.lineModifierSets.forEach(set => {
-                            set.lineModifiers.forEach(mod => { itemHtml += `<div class="modifier-row">+ ${mod.name}</div>`; });
+                            set.lineModifiers.forEach(mod => { 
+                                itemHtml += `<div class="modifier-row">+ ${mod.name}</div>`; 
+                            });
                         });
                     }
                     content.innerHTML += itemHtml;
@@ -85,26 +103,36 @@
                 document.getElementById('items-container').style.display = 'block';
             }
 
+            // 5. Initialize Shift4 TrueToken
             $("#i4goFrame").i4goTrueToken({
                 url: data.i4goUrl,
                 server: data.i4goServer,
                 accessBlock: data.accessBlock,
                 template: "bootstrap4",
+                submitButton: { label: "Place Order" }, // Set custom button text
                 self: document.location,
                 frameAutoResize: true,
                 onSuccess: function(form, response) {
-                    // Hide the order details and show the success message
+                    // Hide the form and show the success message immediately
                     document.getElementById('order-ui').style.display = 'none';
                     document.getElementById('success-container').style.display = 'block';
-                    console.log("Token secured:", response.i4go_uniqueid);
+                    
+                    // console.log("Token secured:", response.i4go_uniqueid);
+                    // This unique ID will be sent to your Final Charge Scenario next.
+                },
+                onFailure: function(form, response) {
+                    alert("Payment Error: " + response.i4go_responsetext);
                 }
             });
 
         } catch (error) {
             console.error("Order Load Failed:", error);
+            document.getElementById('customer-name').innerText = "Unable to load order.";
         }
     }
+
     loadOrder();
 </script>
+
 </body>
 </html>
