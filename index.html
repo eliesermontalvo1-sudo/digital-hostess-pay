@@ -13,11 +13,13 @@
         h1 { font-size: 24px; color: #1a1a1a; margin-bottom: 8px; }
         .amount { font-size: 32px; font-weight: bold; margin: 15px 0; color: #2ecc71; }
         
-        /* New Items List Styling */
         .items-list { text-align: left; background: #fcfcfc; border: 1px solid #eee; border-radius: 8px; padding: 15px; margin-bottom: 20px; font-size: 14px; color: #444; }
-        .items-list h3 { margin-top: 0; font-size: 16px; color: #888; border-bottom: 1px solid #eee; padding-bottom: 8px; }
-        .items-list div { margin-bottom: 5px; display: flex; justify-content: space-between; }
-
+        .items-list h3 { margin-top: 0; font-size: 16px; color: #888; border-bottom: 1px solid #eee; padding-bottom: 8px; margin-bottom: 10px; }
+        
+        /* Receipt Styling */
+        .item-row { display: flex; justify-content: space-between; font-weight: 600; margin-top: 10px; }
+        .modifier-row { font-size: 12px; color: #888; padding-left: 15px; font-style: italic; }
+        
         #i4goFrame { width: 100%; min-height: 350px; margin-top: 20px; border-radius: 8px; overflow: hidden; }
         .loading { color: #888; font-style: italic; }
     </style>
@@ -29,7 +31,7 @@
     <p id="customer-name" class="loading">Loading order details...</p>
     
     <div id="items-container" class="items-list" style="display:none;">
-        <h3>Order Items</h3>
+        <h3>Your Items</h3>
         <div id="items-content"></div>
     </div>
 
@@ -55,13 +57,35 @@
             document.getElementById('order-total').innerText = `$${(data.totalAmount / 100).toFixed(2)}`;
             document.getElementById('customer-name').classList.remove('loading');
 
-            // --- ADDED: Show Order Items ---
+            // --- Logic to parse the complex OrderDetails JSON ---
             if (data.items) {
-                document.getElementById('items-container').style.display = 'block';
-                // If items are a string, show them as text. If they are a list, we can loop through them.
-                document.getElementById('items-content').innerText = data.items;
+                const orderData = typeof data.items === 'string' ? JSON.parse(data.items) : data.items;
+                const content = document.getElementById('items-content');
+                content.innerHTML = ''; // Clear previous
+
+                if (orderData.lineItems) {
+                    orderData.lineItems.forEach(item => {
+                        // Add main item
+                        let itemHtml = `<div class="item-row">
+                            <span>${item.quantity}x ${item.name}</span>
+                            <span>$${(item.price / 100).toFixed(2)}</span>
+                        </div>`;
+                        
+                        // Add modifiers (Temp, Sides, etc.)
+                        if (item.lineModifierSets) {
+                            item.lineModifierSets.forEach(set => {
+                                set.lineModifiers.forEach(mod => {
+                                    itemHtml += `<div class="modifier-row">+ ${mod.name}</div>`;
+                                });
+                            });
+                        }
+                        content.innerHTML += itemHtml;
+                    });
+                    document.getElementById('items-container').style.display = 'block';
+                }
             }
 
+            // Initialize Shift4
             $("#i4goFrame").i4goTrueToken({
                 url: data.i4goUrl,
                 server: data.i4goServer,
@@ -70,15 +94,12 @@
                 self: document.location,
                 frameAutoResize: true,
                 onSuccess: function(form, response) {
-                    alert("Payment Info Secured! Ready for final charge.");
-                },
-                onFailure: function(form, response) {
-                    alert("Payment Error: " + response.i4go_responsetext);
+                    alert("Payment Info Secured! Token: " + response.i4go_uniqueid);
                 }
             });
 
         } catch (error) {
-            console.error("Failed to load order:", error);
+            console.error("Order Load Failed:", error);
         }
     }
 
