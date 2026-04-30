@@ -9,7 +9,7 @@
     
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f9f9f9; display: flex; justify-content: center; padding: 20px; }
-        .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); max-width: 450px; width: 100%; text-align: center; }
+        .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); max-width: 450px; width: 100%; text-align: center; transition: all 0.3s ease; }
         h1 { font-size: 24px; color: #1a1a1a; margin-bottom: 8px; }
         .amount { font-size: 32px; font-weight: bold; margin: 15px 0; color: #2ecc71; }
         .items-list { text-align: left; background: #fcfcfc; border: 1px solid #eee; border-radius: 8px; padding: 15px; margin-bottom: 20px; font-size: 14px; color: #444; }
@@ -18,21 +18,33 @@
         .modifier-row { font-size: 12px; color: #888; padding-left: 15px; font-style: italic; }
         #i4goFrame { width: 100%; min-height: 350px; margin-top: 20px; border-radius: 8px; overflow: hidden; }
         .loading { color: #888; font-style: italic; }
+
+        /* Success Screen Styling */
+        #success-container { display: none; padding: 40px 20px; }
+        .checkmark { font-size: 60px; color: #2ecc71; margin-bottom: 20px; }
     </style>
 </head>
 <body>
 
-<div class="card">
-    <h1>Complete Your Order</h1>
-    <p id="customer-name" class="loading">Loading order details...</p>
-    
-    <div id="items-container" class="items-list" style="display:none;">
-        <h3>Your Items</h3>
-        <div id="items-content"></div>
+<div class="card" id="main-card">
+    <div id="order-ui">
+        <h1>Complete Your Order</h1>
+        <p id="customer-name" class="loading">Loading order details...</p>
+        
+        <div id="items-container" class="items-list" style="display:none;">
+            <h3>Your Items</h3>
+            <div id="items-content"></div>
+        </div>
+
+        <div id="order-total" class="amount">$0.00</div>
+        <div id="i4goFrame"></div>
     </div>
 
-    <div id="order-total" class="amount">$0.00</div>
-    <div id="i4goFrame"></div>
+    <div id="success-container">
+        <div class="checkmark">✓</div>
+        <h1>Order Placed!</h1>
+        <p>Your payment information has been secured. The restaurant is preparing your order now.</p>
+    </div>
 </div>
 
 <script>
@@ -53,7 +65,6 @@
             document.getElementById('order-total').innerText = `$${(data.totalAmount / 100).toFixed(2)}`;
             document.getElementById('customer-name').classList.remove('loading');
 
-            // --- Robust JSON Parsing ---
             let orderData = data.items;
             if (typeof orderData === 'string') {
                 try { orderData = JSON.parse(orderData); } catch(e) { console.error("Item Parse Error", e); }
@@ -82,7 +93,10 @@
                 self: document.location,
                 frameAutoResize: true,
                 onSuccess: function(form, response) {
-                    alert("Payment Info Secured! Token: " + response.i4go_uniqueid);
+                    // Hide the order details and show the success message
+                    document.getElementById('order-ui').style.display = 'none';
+                    document.getElementById('success-container').style.display = 'block';
+                    console.log("Token secured:", response.i4go_uniqueid);
                 }
             });
 
