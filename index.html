@@ -8,70 +8,80 @@
     <script src="https://i4m.shift4test.com/js/jquery.i4goTrueToken.js"></script>
     
     <style>
+        :root {
+            --primary: #2ecc71;
+            --bg: #f4f4f7;
+            --text: #111;
+        }
         body { 
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
-            background: #f4f4f7; 
-            display: flex; 
-            justify-content: center; 
-            align-items: center; 
-            min-height: 100vh; 
-            margin: 0; 
+            background: var(--bg); 
+            display: flex; justify-content: center; align-items: center; 
+            min-height: 100vh; margin: 0; 
         }
+
+        /* Loading Spinners */
+        .loader-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255, 255, 255, 0.95);
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 1000; transition: opacity 0.3s ease;
+        }
+        .spinner {
+            width: 50px; height: 50px;
+            border: 5px solid #eee; border-top: 5px solid var(--primary);
+            border-radius: 50%; animation: spin 1s linear infinite;
+            margin-bottom: 15px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
         .checkout-container { 
-            background: white; 
-            padding: 40px; 
-            border-radius: 16px; 
+            background: white; padding: 40px; border-radius: 16px; 
             box-shadow: 0 10px 25px rgba(0,0,0,0.05); 
-            max-width: 480px; 
-            width: 100%; 
+            max-width: 480px; width: 100%; position: relative;
         }
-        h1 { font-size: 22px; color: #111; margin-bottom: 20px; text-align: center; font-weight: 700; }
-        .order-summary { 
-            background: #fafafa; 
-            border: 1px solid #eee; 
-            border-radius: 12px; 
-            padding: 20px; 
-            margin-bottom: 25px; 
-        }
-        .summary-header { border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 10px; font-weight: 600; color: #555; font-size: 14px; }
+        h1 { font-size: 22px; color: var(--text); margin-bottom: 20px; text-align: center; font-weight: 700; }
+        .order-summary { background: #fafafa; border: 1px solid #eee; border-radius: 12px; padding: 20px; margin-bottom: 25px; }
         .item-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 15px; color: #333; }
         .total-row { 
-            display: flex; 
-            justify-content: space-between; 
-            margin-top: 15px; 
-            padding-top: 15px; 
-            border-top: 2px solid #eee; 
-            font-weight: 800; 
-            font-size: 20px; 
-            color: #2ecc71; 
+            display: flex; justify-content: space-between; 
+            margin-top: 15px; padding-top: 15px; border-top: 2px solid #eee; 
+            font-weight: 800; font-size: 20px; color: var(--primary); 
         }
         #i4goFrame { width: 100%; min-height: 380px; border: none; border-radius: 8px; }
         #success-ui { display: none; text-align: center; padding: 40px 0; }
-        .success-icon { font-size: 64px; color: #2ecc71; margin-bottom: 20px; }
+        .success-icon { font-size: 64px; color: var(--primary); margin-bottom: 20px; }
     </style>
 </head>
 <body>
 
+<div id="initial-loader" class="loader-overlay">
+    <div class="spinner"></div>
+    <p>Loading your order details...</p>
+</div>
+
+<div id="payment-loader" class="loader-overlay" style="display: none;">
+    <div class="spinner"></div>
+    <p>Processing your payment securely...</p>
+</div>
+
 <div class="checkout-container">
     <div id="payment-ui">
         <h1>Complete Your Order</h1>
-        
         <div class="order-summary">
-            <div class="summary-header" id="customer-info">Loading order...</div>
             <div id="items-list"></div>
             <div class="total-row">
                 <span>Total</span>
                 <span id="display-total">$0.00</span>
             </div>
         </div>
-
         <div id="i4goFrame"></div>
     </div>
 
     <div id="success-ui">
         <div class="success-icon">✓</div>
-        <h1>Order Received</h1>
-        <p>Your transaction was successful. Thank you!</p>
+        <h1>Order Confirmed!</h1>
+        <p>Your receipt and order have been sent to the kitchen.</p>
     </div>
 </div>
 
@@ -81,78 +91,77 @@
 
     async function initializeCheckout() {
         if (!orderId) {
-            document.getElementById('customer-info').innerText = "Error: No Order ID provided.";
+            document.getElementById('initial-loader').innerHTML = "<p>Error: No Order ID provided.</p>";
             return;
         }
 
         try {
-            // SCENARIO A: Fetch Access Block and Order Details
             const response = await fetch(`https://hook.us2.make.com/lq54xriqlh8eyrsiihc58i5ga4kc45ry?id=${orderId}`);
             const data = await response.json();
 
-            // 1. Update UI with Order Data
-            document.getElementById('customer-info').innerText = `Order for ${data.customerName || 'Guest'}`;
-            document.getElementById('display-total').innerText = `$${(data.totalAmount / 100).toFixed(2)}`;
+            const amountVal = parseFloat(data.totalAmount);
+            const displayVal = amountVal > 1000 ? (amountVal / 100) : amountVal;
+            document.getElementById('display-total').innerText = `$${displayVal.toFixed(2)}`;
 
-            // Build Receipt List
             let itemsHtml = '';
             const orderItems = typeof data.items === 'string' ? JSON.parse(data.items) : data.items;
-            
             if (orderItems && orderItems.lineItems) {
                 orderItems.lineItems.forEach(item => {
-                    itemsHtml += `
-                        <div class="item-row">
-                            <span>${item.quantity}x ${item.name}</span>
-                            <span>$${(item.total / 100).toFixed(2)}</span>
-                        </div>`;
+                    itemsHtml += `<div class="item-row"><span>${item.quantity}x ${item.name}</span><span>$${(item.total / 100).toFixed(2)}</span></div>`;
                 });
                 document.getElementById('items-list').innerHTML = itemsHtml;
             }
 
-            // 2. Initialize i4Go iFrame
             $("#i4goFrame").i4goTrueToken({
                 url: data.i4goUrl,
                 server: data.i4goServer,
                 accessBlock: data.accessBlock,
                 template: "bootstrap4",
                 submitButton: { label: "Pay Now" },
-                self: document.location, // Mandatory Handshake
+                self: document.location,
                 frameAutoResize: true,
                 onSuccess: function(form, response) {
-                    // Hide UI
-                    document.getElementById('payment-ui').style.display = 'none';
-                    document.getElementById('success-ui').style.display = 'block';
+                    // Trigger Payment Loader
+                    document.getElementById('payment-loader').style.display = 'flex';
 
-                    // 3. Format Legacy Expiration (MMYY)
                     let month = (response.i4go_expirationmonth || "").toString().padStart(2, '0');
                     let year = (response.i4go_expirationyear || "").toString().slice(-2);
                     let formattedExp = (month && year) ? (month + year) : "";
 
-                    // SCENARIO B: Send for Final Charge
+                    const finalPennies = Math.round(amountVal < 1000 ? amountVal * 100 : amountVal);
+
                     fetch('https://hook.us2.make.com/998kdfnczir9vgihp4wbny8ollf80px1', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             tokenId: response.i4go_uniqueid,
                             expirationDate: formattedExp,
-                            totalAmount: data.totalAmount, // Sends as 2198 (Pennies)
+                            totalAmount: finalPennies,
                             invoiceId: orderId
                         })
+                    }).then(() => {
+                        // All done! Show success
+                        document.getElementById('payment-loader').style.display = 'none';
+                        document.getElementById('payment-ui').style.display = 'none';
+                        document.getElementById('success-ui').style.display = 'block';
                     });
                 },
                 onFailure: function(form, response) {
-                    alert("Card Declined: " + (response.i4go_responsetext || "Unknown Error"));
+                    document.getElementById('payment-loader').style.display = 'none';
+                    alert("Payment Failed: " + (response.i4go_responsetext || "Declined"));
                 }
             });
 
+            // Hide the initial loader once the Shift4 iFrame is ready
+            document.getElementById('initial-loader').style.opacity = '0';
+            setTimeout(() => document.getElementById('initial-loader').style.display = 'none', 300);
+
         } catch (err) {
-            console.error("Initialization Failed:", err);
-            document.getElementById('customer-info').innerText = "Unable to load order. Please refresh.";
+            console.error("Failed:", err);
+            document.getElementById('initial-loader').innerHTML = "<p>Connection error. Please refresh.</p>";
         }
     }
-
     initializeCheckout();
 </script>
-
 </body>
 </html>
