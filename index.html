@@ -8,46 +8,23 @@
     <script src="https://i4m.shift4test.com/js/jquery.i4goTrueToken.js"></script>
     
     <style>
-        :root {
-            --primary: #2ecc71;
-            --bg: #f4f4f7;
-            --text: #111;
-        }
-        body { 
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
-            background: var(--bg); 
-            display: flex; justify-content: center; align-items: center; 
-            min-height: 100vh; margin: 0; 
-        }
+        :root { --primary: #2ecc71; --error: #e74c3c; --bg: #f4f4f7; --text: #111; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: var(--bg); display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
 
-        /* Loading Spinners */
-        .loader-overlay {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(255, 255, 255, 0.95);
-            display: flex; flex-direction: column; justify-content: center; align-items: center;
-            z-index: 1000; transition: opacity 0.3s ease;
-        }
-        .spinner {
-            width: 50px; height: 50px;
-            border: 5px solid #eee; border-top: 5px solid var(--primary);
-            border-radius: 50%; animation: spin 1s linear infinite;
-            margin-bottom: 15px;
-        }
+        .loader-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255, 255, 255, 0.95); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 1000; transition: opacity 0.3s ease; }
+        .spinner { width: 50px; height: 50px; border: 5px solid #eee; border-top: 5px solid var(--primary); border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 15px; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-        .checkout-container { 
-            background: white; padding: 40px; border-radius: 16px; 
-            box-shadow: 0 10px 25px rgba(0,0,0,0.05); 
-            max-width: 480px; width: 100%; position: relative;
-        }
+        .checkout-container { background: white; padding: 40px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); max-width: 480px; width: 100%; position: relative; }
         h1 { font-size: 22px; color: var(--text); margin-bottom: 20px; text-align: center; font-weight: 700; }
+        
+        /* Error Message Styling */
+        #error-display { display: none; background: #fdf0f0; border: 1px solid var(--error); color: var(--error); padding: 15px; border-radius: 8px; margin-bottom: 20px; font-size: 14px; text-align: center; }
+        
         .order-summary { background: #fafafa; border: 1px solid #eee; border-radius: 12px; padding: 20px; margin-bottom: 25px; }
         .item-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 15px; color: #333; }
-        .total-row { 
-            display: flex; justify-content: space-between; 
-            margin-top: 15px; padding-top: 15px; border-top: 2px solid #eee; 
-            font-weight: 800; font-size: 20px; color: var(--primary); 
-        }
+        .total-row { display: flex; justify-content: space-between; margin-top: 15px; padding-top: 15px; border-top: 2px solid #eee; font-weight: 800; font-size: 20px; color: var(--primary); }
+        
         #i4goFrame { width: 100%; min-height: 380px; border: none; border-radius: 8px; }
         #success-ui { display: none; text-align: center; padding: 40px 0; }
         .success-icon { font-size: 64px; color: var(--primary); margin-bottom: 20px; }
@@ -55,25 +32,18 @@
 </head>
 <body>
 
-<div id="initial-loader" class="loader-overlay">
-    <div class="spinner"></div>
-    <p>Loading your order details...</p>
-</div>
-
-<div id="payment-loader" class="loader-overlay" style="display: none;">
-    <div class="spinner"></div>
-    <p>Processing your payment securely...</p>
-</div>
+<div id="initial-loader" class="loader-overlay"><div class="spinner"></div><p>Loading your order details...</p></div>
+<div id="payment-loader" class="loader-overlay" style="display: none;"><div class="spinner"></div><p>Processing your payment securely...</p></div>
 
 <div class="checkout-container">
     <div id="payment-ui">
         <h1>Complete Your Order</h1>
+        
+        <div id="error-display"></div>
+
         <div class="order-summary">
             <div id="items-list"></div>
-            <div class="total-row">
-                <span>Total</span>
-                <span id="display-total">$0.00</span>
-            </div>
+            <div class="total-row"><span>Total</span><span id="display-total">$0.00</span></div>
         </div>
         <div id="i4goFrame"></div>
     </div>
@@ -88,6 +58,19 @@
 <script>
     const urlParams = new URLSearchParams(window.location.search);
     const orderId = urlParams.get('id');
+    let orderData = null;
+
+    // UI Helper Functions
+    function showError(msg) {
+        const errBox = document.getElementById('error-display');
+        errBox.innerText = msg;
+        errBox.style.display = 'block';
+        window.scrollTo(0, 0);
+    }
+
+    function hideError() {
+        document.getElementById('error-display').style.display = 'none';
+    }
 
     async function initializeCheckout() {
         if (!orderId) {
@@ -96,16 +79,18 @@
         }
 
         try {
-            // OFPH Scenario Call
-            const response = await fetch(`https://hook.us2.make.com/lq54xriqlh8eyrsiihc58i5ga4kc45ry?id=${orderId}`);
-            const data = await response.json();
+            // Only fetch from Make if we don't already have the data (prevents refresh costs)
+            if (!orderData) {
+                const response = await fetch(`https://hook.us2.make.com/lq54xriqlh8eyrsiihc58i5ga4kc45ry?id=${orderId}`);
+                orderData = await response.json();
+            }
 
-            const amountVal = parseFloat(data.totalAmount);
+            const amountVal = parseFloat(orderData.totalAmount);
             const displayVal = amountVal > 1000 ? (amountVal / 100) : amountVal;
             document.getElementById('display-total').innerText = `$${displayVal.toFixed(2)}`;
 
             let itemsHtml = '';
-            const orderItems = typeof data.items === 'string' ? JSON.parse(data.items) : data.items;
+            const orderItems = typeof orderData.items === 'string' ? JSON.parse(orderData.items) : orderData.items;
             if (orderItems && orderItems.lineItems) {
                 orderItems.lineItems.forEach(item => {
                     itemsHtml += `<div class="item-row"><span>${item.quantity}x ${item.name}</span><span>$${(item.total / 100).toFixed(2)}</span></div>`;
@@ -113,66 +98,65 @@
                 document.getElementById('items-list').innerHTML = itemsHtml;
             }
 
+            // LOAD SHIFT4 WIDGET
             $("#i4goFrame").i4goTrueToken({
-                url: data.i4goUrl,
-                server: data.i4goServer,
-                accessBlock: data.accessBlock,
+                url: orderData.i4goUrl,
+                server: orderData.i4goServer,
+                accessBlock: orderData.accessBlock,
                 template: "bootstrap4",
                 submitButton: { label: "Pay Now" },
                 self: document.location,
                 frameAutoResize: true,
                 onSuccess: function(form, response) {
-                    // Trigger Payment Loader UI
+                    hideError();
                     document.getElementById('payment-loader').style.display = 'flex';
 
                     let month = (response.i4go_expirationmonth || "").toString().padStart(2, '0');
                     let year = (response.i4go_expirationyear || "").toString().slice(-2);
                     let formattedExp = (month && year) ? (month + year) : "";
 
-                    const finalPennies = Math.round(amountVal < 1000 ? amountVal * 100 : amountVal);
-
-                    // DHCO Scenario Call
                     fetch('https://hook.us2.make.com/998kdfnczir9vgihp4wbny8ollf80px1', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             tokenId: response.i4go_uniqueid,
                             expirationDate: formattedExp,
-                            totalAmount: finalPennies,
+                            totalAmount: Math.round(amountVal < 1000 ? amountVal * 100 : amountVal),
                             invoiceId: orderId
                         })
                     })
                     .then(async (res) => {
                         const resultData = await res.json();
-                        
                         if (resultData.status === 'success') {
-                            // Hide loaders and show success
                             document.getElementById('payment-loader').style.display = 'none';
                             document.getElementById('payment-ui').style.display = 'none';
                             document.getElementById('success-ui').style.display = 'block';
                         } else {
-                            // Hide loader and show the specific bank error
+                            // BACKEND FAILURE (Insufficient Funds, etc)
                             document.getElementById('payment-loader').style.display = 'none';
-                            alert("Payment Issue: " + (resultData.message || "Please try another card."));
+                            showError(resultData.message || "Payment declined. Please try another card.");
+                            
+                            // CRITICAL: Re-initialize the widget so it "unlocks"
+                            initializeCheckout(); 
                         }
                     })
                     .catch((err) => {
                         document.getElementById('payment-loader').style.display = 'none';
-                        alert("Connection Error. Your card was not charged. Please try again.");
+                        showError("Connection error. Please check your internet and try again.");
+                        initializeCheckout(); 
                     });
                 },
                 onFailure: function(form, response) {
+                    // LOCAL WIDGET FAILURE (Invalid Card Number, LUHN fail)
                     document.getElementById('payment-loader').style.display = 'none';
-                    alert("Card Verification Failed: " + (response.i4go_responsetext || "Declined"));
+                    showError("Card Error: " + (response.i4go_responsetext || "Invalid card details."));
                 }
             });
 
-            // Hide the initial loader once the iFrame is ready
             document.getElementById('initial-loader').style.opacity = '0';
             setTimeout(() => document.getElementById('initial-loader').style.display = 'none', 300);
 
         } catch (err) {
-            console.error("Failed:", err);
             document.getElementById('initial-loader').innerHTML = "<p>Connection error. Please refresh.</p>";
         }
     }
