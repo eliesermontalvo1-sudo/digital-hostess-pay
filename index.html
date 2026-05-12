@@ -13,11 +13,11 @@
         .spinner { width: 50px; height: 50px; border: 5px solid #eee; border-top: 5px solid var(--primary); border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 15px; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         .checkout-container { background: white; padding: 40px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); max-width: 480px; width: 100%; position: relative; }
-        #error-display { display: none; background: #fdf0f0; border: 1px solid var(--error); color: var(--error); padding: 15px; border-radius: 8px; margin-bottom: 20px; font-size: 14px; text-align: center; }
+        #error-display { display: none; background: #fdf0f0; border: 1px solid var(--error); color: var(--error); padding: 15px; border-radius: 8px; margin-bottom: 20px; font-size: 14px; text-align: center; line-height: 1.4; }
         .order-summary { background: #fafafa; border: 1px solid #eee; border-radius: 12px; padding: 20px; margin-bottom: 25px; }
         .item-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 15px; color: #333; }
         .total-row { display: flex; justify-content: space-between; margin-top: 15px; padding-top: 15px; border-top: 2px solid #eee; font-weight: 800; font-size: 20px; color: var(--primary); }
-        #i4goFrame { width: 100%; min-height: 380px; border: none; border-radius: 8px; background: #fff; display: block !important; }
+        .iframe-wrapper { min-height: 380px; width: 100%; border-radius: 8px; background: #fff; }
         #success-ui { display: none; text-align: center; padding: 40px 0; }
     </style>
 </head>
@@ -33,7 +33,7 @@
             <div id="items-list"></div>
             <div class="total-row"><span>Total</span><span id="display-total">$0.00</span></div>
         </div>
-        <div id="i4goFrame"></div>
+        <div id="frame-holder" class="iframe-wrapper"></div>
     </div>
     <div id="success-ui"><div style="font-size:64px; color:var(--primary);">✓</div><h1>Order Placed!</h1><p>Sent to the kitchen.</p></div>
 </div>
@@ -60,14 +60,13 @@
 
     async function initializeCheckout() {
         if (!orderId) return;
-        showLoader("Refreshing payment security...");
+        showLoader("Synchronizing security...");
         
         try {
-            // Get a fresh handshake from OFPH
+            // Get fresh credentials
             const response = await fetch(`https://hook.us2.make.com/lq54xriqlh8eyrsiihc58i5ga4kc45ry?id=${orderId}`);
             const orderData = await response.json();
 
-            // Render UI details
             document.getElementById('display-total').innerText = `$${(orderData.totalAmount / 100).toFixed(2)}`;
             let itemsHtml = '';
             const orderItems = typeof orderData.items === 'string' ? JSON.parse(orderData.items) : orderData.items;
@@ -76,65 +75,62 @@
             });
             document.getElementById('items-list').innerHTML = itemsHtml;
 
-            // CLEAR AND RELOAD
-            const frameContainer = $("#i4goFrame");
-            frameContainer.empty(); 
+            // NUCLEAR RESET: Delete the div and put it back
+            $("#frame-holder").remove();
+            $(".order-summary").after('<div id="frame-holder" class="iframe-wrapper"></div>');
 
-            // We use the fresh accessBlock here
-            frameContainer.i4goTrueToken({
-                url: orderData.i4goUrl,
-                server: orderData.i4goServer,
-                accessBlock: orderData.accessBlock,
-                template: "bootstrap4",
-                submitButton: { label: "Confirm Payment" },
-                self: document.location,
-                frameAutoResize: true,
-                onSuccess: function(form, response) {
-                    document.getElementById('error-display').style.display = 'none';
-                    showLoader("Verifying with your bank...");
-                    
-                    fetch('https://hook.us2.make.com/998kdfnczir9vgihp4wbny8ollf80px1', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            tokenId: response.i4go_uniqueid,
-                            expirationDate: (response.i4go_expirationmonth || "").toString().padStart(2, '0') + (response.i4go_expirationyear || "").toString().slice(-2),
-                            totalAmount: orderData.totalAmount,
-                            invoiceId: orderId
+            // Brief pause to allow the browser to register the new div
+            setTimeout(() => {
+                $("#frame-holder").i4goTrueToken({
+                    url: orderData.i4goUrl,
+                    server: orderData.i4goServer,
+                    accessBlock: orderData.accessBlock,
+                    template: "bootstrap4",
+                    submitButton: { label: "Pay Now" },
+                    self: document.location,
+                    frameAutoResize: true,
+                    onSuccess: function(form, res) {
+                        document.getElementById('error-display').style.display = 'none';
+                        showLoader("Verifying payment...");
+                        
+                        fetch('https://hook.us2.make.com/998kdfnczir9vgihp4wbny8ollf80px1', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                tokenId: res.i4go_uniqueid,
+                                expirationDate: (res.i4go_expirationmonth || "").toString().padStart(2, '0') + (res.i4go_expirationyear || "").toString().slice(-2),
+                                totalAmount: orderData.totalAmount,
+                                invoiceId: orderId
+                            })
                         })
-                    })
-                    .then(async (res) => {
-                        const result = await res.json();
+                        .then(async (backendRes) => {
+                            const result = await backendRes.json();
+                            hideLoader();
+                            if (result.status === 'success') {
+                                document.getElementById('payment-ui').style.display = 'none';
+                                document.getElementById('success-ui').style.display = 'block';
+                            } else {
+                                showError(result.message || "Payment declined.");
+                                initializeCheckout(); 
+                            }
+                        })
+                        .catch((err) => {
+                            hideLoader();
+                            showError("The payment took too long. Please check your card balance and try again.");
+                            initializeCheckout(); 
+                        });
+                    },
+                    onFailure: function() {
                         hideLoader();
-                        if (result.status === 'success') {
-                            document.getElementById('payment-ui').style.display = 'none';
-                            document.getElementById('success-ui').style.display = 'block';
-                        } else {
-                            // Friendly catch for all error codes
-                            let msg = result.message || "Payment declined.";
-                            if (msg.includes("Code: R")) msg = "Bank referral required. Please use another card.";
-                            if (msg.includes("Code: P")) msg = "Only partial funds available. Use another card.";
-                            
-                            showError(msg);
-                            initializeCheckout(); // Reset iFrame
-                        }
-                    })
-                    .catch((err) => {
-                        hideLoader();
-                        // Professional timeout message
-                        showError("The request timed out. Please check your connection and try again.");
-                        initializeCheckout(); 
-                    });
-                },
-                onFailure: function() {
-                    hideLoader();
-                    showError("Card Error: Please verify your card details and try again.");
-                }
-            });
-            hideLoader();
+                        showError("Card Entry Error: Please double-check your numbers.");
+                    }
+                });
+                hideLoader();
+            }, 100);
+
         } catch (err) {
             hideLoader();
-            showError("Connection lost. Please refresh the page.");
+            showError("Network Error. Please refresh.");
         }
     }
     initializeCheckout();
