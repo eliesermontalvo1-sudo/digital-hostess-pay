@@ -9,7 +9,7 @@
     <style>
         :root { --primary: #2ecc71; --error: #e74c3c; --bg: #f4f4f7; --text: #111; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: var(--bg); display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
-        .loader-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255, 255, 255, 0.95); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 1000; }
+        .loader-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255, 255, 255, 0.95); display: none; flex-direction: column; justify-content: center; align-items: center; z-index: 1000; }
         .spinner { width: 50px; height: 50px; border: 5px solid #eee; border-top: 5px solid var(--primary); border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 15px; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         .checkout-container { background: white; padding: 40px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); max-width: 480px; width: 100%; position: relative; }
@@ -17,17 +17,17 @@
         .order-summary { background: #fafafa; border: 1px solid #eee; border-radius: 12px; padding: 20px; margin-bottom: 25px; }
         .item-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 15px; color: #333; }
         .total-row { display: flex; justify-content: space-between; margin-top: 15px; padding-top: 15px; border-top: 2px solid #eee; font-weight: 800; font-size: 20px; color: var(--primary); }
-        #i4goFrame { width: 100%; min-height: 380px; border: none; border-radius: 8px; }
+        #i4goFrame { width: 100%; min-height: 380px; border: none; border-radius: 8px; background: #f9f9f9; }
         #success-ui { display: none; text-align: center; padding: 40px 0; }
     </style>
 </head>
 <body>
 
-<div id="loading-screen" class="loader-overlay"><div class="spinner"></div><p id="loader-msg">Loading Order...</p></div>
+<div id="main-loader" class="loader-overlay"><div class="spinner"></div><p id="loader-text">Loading...</p></div>
 
 <div class="checkout-container">
     <div id="payment-ui">
-        <h1>Secure Checkout</h1>
+        <h1 id="page-title">Secure Checkout</h1>
         <div id="error-display"></div>
         <div class="order-summary">
             <div id="items-list"></div>
@@ -35,95 +35,107 @@
         </div>
         <div id="i4goFrame"></div>
     </div>
-    <div id="success-ui"><div style="font-size:64px; color:var(--primary);">✓</div><h1>Paid!</h1><p>Order sent to kitchen.</p></div>
+    <div id="success-ui"><div style="font-size:64px; color:var(--primary);">✓</div><h1>Order Placed!</h1><p>Your order was sent to the kitchen.</p></div>
 </div>
 
 <script>
     const urlParams = new URLSearchParams(window.location.search);
     const orderId = urlParams.get('id');
 
-    async function startFlow() {
+    function showLoader(text) {
+        document.getElementById('loader-text').innerText = text;
+        document.getElementById('main-loader').style.display = 'flex';
+    }
+
+    function hideLoader() {
+        document.getElementById('main-loader').style.display = 'none';
+    }
+
+    function showError(msg) {
+        const errBox = document.getElementById('error-display');
+        errBox.innerText = msg;
+        errBox.style.display = 'block';
+        errBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    async function initializeCheckout() {
         if (!orderId) return;
-
-        // 1. Check Session Storage to save Make.com tasks on Refresh
-        let cached = sessionStorage.getItem('dh_order_' + orderId);
-        let orderData;
-
-        if (cached) {
-            orderData = JSON.parse(cached);
-            renderUI(orderData);
-        } else {
-            document.getElementById('loading-screen').style.display = 'flex';
-            const res = await fetch(`https://hook.us2.make.com/lq54xriqlh8eyrsiihc58i5ga4kc45ry?id=${orderId}`);
-            orderData = await res.json();
-            sessionStorage.setItem('dh_order_' + orderId, JSON.stringify(orderData));
-            renderUI(orderData);
-        }
+        showLoader("Preparing secure checkout...");
         
-        loadIframe(orderData);
-    }
+        try {
+            // ALWAYS get a fresh accessBlock when this runs to ensure iFrame never "disappears"
+            const response = await fetch(`https://hook.us2.make.com/lq54xriqlh8eyrsiihc58i5ga4kc45ry?id=${orderId}`);
+            const orderData = await response.json();
 
-    function renderUI(data) {
-        document.getElementById('display-total').innerText = `$${(data.totalAmount / 100).toFixed(2)}`;
-        let itemsHtml = '';
-        const orderItems = typeof data.items === 'string' ? JSON.parse(data.items) : data.items;
-        orderItems.lineItems.forEach(item => {
-            itemsHtml += `<div class="item-row"><span>${item.quantity}x ${item.name}</span><span>$${(item.total / 100).toFixed(2)}</span></div>`;
-        });
-        document.getElementById('items-list').innerHTML = itemsHtml;
-    }
+            // Render UI
+            document.getElementById('display-total').innerText = `$${(orderData.totalAmount / 100).toFixed(2)}`;
+            let itemsHtml = '';
+            const orderItems = typeof orderData.items === 'string' ? JSON.parse(orderData.items) : orderData.items;
+            orderItems.lineItems.forEach(item => {
+                itemsHtml += `<div class="item-row"><span>${item.quantity}x ${item.name}</span><span>$${(item.total / 100).toFixed(2)}</span></div>`;
+            });
+            document.getElementById('items-list').innerHTML = itemsHtml;
 
-    function loadIframe(data) {
-        $("#i4goFrame").empty(); 
-        $("#i4goFrame").i4goTrueToken({
-            url: data.i4goUrl, server: data.i4goServer, accessBlock: data.accessBlock,
-            template: "bootstrap4", submitButton: { label: "Pay Now" }, self: document.location, frameAutoResize: true,
-            onSuccess: function(form, response) {
-                document.getElementById('error-display').style.display = 'none';
-                document.getElementById('loader-msg').innerText = "Processing Payment...";
-                document.getElementById('loading-screen').style.display = 'flex';
-
-                fetch('https://hook.us2.make.com/998kdfnczir9vgihp4wbny8ollf80px1', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        tokenId: response.i4go_uniqueid,
-                        expirationDate: (response.i4go_expirationmonth || "").toString().padStart(2, '0') + (response.i4go_expirationyear || "").toString().slice(-2),
-                        totalAmount: data.totalAmount,
-                        invoiceId: orderId
+            // Load Iframe
+            $("#i4goFrame").empty(); 
+            $("#i4goFrame").i4goTrueToken({
+                url: orderData.i4goUrl,
+                server: orderData.i4goServer,
+                accessBlock: orderData.accessBlock,
+                template: "bootstrap4",
+                submitButton: { label: "Confirm Payment", class: "btn-primary" },
+                self: document.location,
+                frameAutoResize: true,
+                onSuccess: function(form, response) {
+                    document.getElementById('error-display').style.display = 'none';
+                    showLoader("Processing with bank...");
+                    
+                    fetch('https://hook.us2.make.com/998kdfnczir9vgihp4wbny8ollf80px1', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            tokenId: response.i4go_uniqueid,
+                            expirationDate: (response.i4go_expirationmonth || "").toString().padStart(2, '0') + (response.i4go_expirationyear || "").toString().slice(-2),
+                            totalAmount: orderData.totalAmount,
+                            invoiceId: orderId
+                        })
                     })
-                })
-                .then(async (res) => {
-                    const result = await res.json();
-                    document.getElementById('loading-screen').style.display = 'none';
-                    if (result.status === 'success') {
-                        document.getElementById('payment-ui').style.display = 'none';
-                        document.getElementById('success-ui').style.display = 'block';
-                    } else {
-                        document.getElementById('error-display').innerText = result.message || "Declined.";
-                        document.getElementById('error-display').style.display = 'block';
-                        // Force a fresh accessBlock to unlock the frame
-                        sessionStorage.removeItem('dh_order_' + orderId);
-                        startFlow();
-                    }
-                })
-                .catch(() => {
-                    document.getElementById('loading-screen').style.display = 'none';
-                    document.getElementById('error-display').innerText = "Request timed out.";
-                    document.getElementById('error-display').style.display = 'block';
-                    sessionStorage.removeItem('dh_order_' + orderId);
-                    startFlow();
-                });
-            },
-            onFailure: function() {
-                document.getElementById('error-display').innerText = "Invalid Card Entry.";
-                document.getElementById('error-display').style.display = 'block';
-            }
-        });
-        document.getElementById('loading-screen').style.display = 'none';
+                    .then(async (res) => {
+                        const result = await res.json();
+                        if (result.status === 'success') {
+                            hideLoader();
+                            document.getElementById('payment-ui').style.display = 'none';
+                            document.getElementById('success-ui').style.display = 'block';
+                        } else {
+                            // BANK ERROR (D, R, P)
+                            hideLoader();
+                            let customMsg = "Payment declined. Please try another card.";
+                            if (result.message.includes("(Code: R)")) customMsg = "Bank requires a phone call. Please use a different card.";
+                            if (result.message.includes("(Code: P)")) customMsg = "Partial approval received. Full payment required.";
+                            
+                            showError(customMsg);
+                            initializeCheckout(); // Full reset to get new accessBlock
+                        }
+                    })
+                    .catch((err) => {
+                        // FRIENDLY TIMEOUT MESSAGE
+                        hideLoader();
+                        showError("The connection timed out. No charge was made. Please try again.");
+                        initializeCheckout(); 
+                    });
+                },
+                onFailure: function(form, response) {
+                    hideLoader();
+                    showError("Invalid Card: Please check your number and CVV.");
+                }
+            });
+            hideLoader();
+        } catch (err) {
+            hideLoader();
+            document.getElementById('payment-ui').innerHTML = "<h2>Connection lost. Please refresh the page.</h2>";
+        }
     }
-
-    startFlow();
+    initializeCheckout();
 </script>
 </body>
 </html>
