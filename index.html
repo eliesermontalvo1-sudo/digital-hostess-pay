@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Secure Checkout | Digital Hostess</title>
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-    <script src="https://i4m.shift4test.com/js/jquery.i4goTrueToken.js"></script>
     <style>
         :root { --primary: #2ecc71; --error: #e74c3c; --bg: #f4f4f7; --text: #111; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: var(--bg); display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
@@ -17,7 +16,7 @@
         .order-summary { background: #fafafa; border: 1px solid #eee; border-radius: 12px; padding: 20px; margin-bottom: 25px; }
         .item-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 15px; color: #333; }
         .total-row { display: flex; justify-content: space-between; margin-top: 15px; padding-top: 15px; border-top: 2px solid #eee; font-weight: 800; font-size: 20px; color: var(--primary); }
-        .iframe-wrapper { min-height: 380px; width: 100%; border-radius: 8px; background: #fff; }
+        #i4goFrame { min-height: 380px; width: 100%; border: none; border-radius: 8px; }
         #success-ui { display: none; text-align: center; padding: 40px 0; }
     </style>
 </head>
@@ -33,7 +32,9 @@
             <div id="items-list"></div>
             <div class="total-row"><span>Total</span><span id="display-total">$0.00</span></div>
         </div>
-        <div id="frame-holder" class="iframe-wrapper"></div>
+        <div id="iframe-target">
+            <div id="i4goFrame"></div>
+        </div>
     </div>
     <div id="success-ui"><div style="font-size:64px; color:var(--primary);">✓</div><h1>Order Placed!</h1><p>Sent to the kitchen.</p></div>
 </div>
@@ -63,35 +64,36 @@
         showLoader("Synchronizing security...");
         
         try {
-            // Get fresh credentials
             const response = await fetch(`https://hook.us2.make.com/lq54xriqlh8eyrsiihc58i5ga4kc45ry?id=${orderId}`);
-            const orderData = await response.json();
+            const data = await response.json();
 
-            document.getElementById('display-total').innerText = `$${(orderData.totalAmount / 100).toFixed(2)}`;
+            document.getElementById('display-total').innerText = `$${(data.totalAmount / 100).toFixed(2)}`;
             let itemsHtml = '';
-            const orderItems = typeof orderData.items === 'string' ? JSON.parse(orderData.items) : orderData.items;
+            const orderItems = typeof data.items === 'string' ? JSON.parse(data.items) : data.items;
             orderItems.lineItems.forEach(item => {
                 itemsHtml += `<div class="item-row"><span>${item.quantity}x ${item.name}</span><span>$${(item.total / 100).toFixed(2)}</span></div>`;
             });
             document.getElementById('items-list').innerHTML = itemsHtml;
 
-            // NUCLEAR RESET: Delete the div and put it back
-            $("#frame-holder").remove();
-            $(".order-summary").after('<div id="frame-holder" class="iframe-wrapper"></div>');
-
-            // Brief pause to allow the browser to register the new div
-            setTimeout(() => {
-                $("#frame-holder").i4goTrueToken({
-                    url: orderData.i4goUrl,
-                    server: orderData.i4goServer,
-                    accessBlock: orderData.accessBlock,
+            // Re-load the Shift4 Script to ensure the iFrame re-appears
+            const oldScript = document.getElementById('shift4-script');
+            if (oldScript) oldScript.remove();
+            
+            const script = document.createElement('script');
+            script.id = 'shift4-script';
+            script.src = "https://i4m.shift4test.com/js/jquery.i4goTrueToken.js";
+            script.onload = () => {
+                $("#i4goFrame").i4goTrueToken({
+                    url: data.i4goUrl,
+                    server: data.i4goServer,
+                    accessBlock: data.accessBlock,
                     template: "bootstrap4",
-                    submitButton: { label: "Pay Now" },
+                    submitButton: { label: "Confirm Payment" },
                     self: document.location,
                     frameAutoResize: true,
                     onSuccess: function(form, res) {
                         document.getElementById('error-display').style.display = 'none';
-                        showLoader("Verifying payment...");
+                        showLoader("Processing payment...");
                         
                         fetch('https://hook.us2.make.com/998kdfnczir9vgihp4wbny8ollf80px1', {
                             method: 'POST',
@@ -99,34 +101,36 @@
                             body: JSON.stringify({
                                 tokenId: res.i4go_uniqueid,
                                 expirationDate: (res.i4go_expirationmonth || "").toString().padStart(2, '0') + (res.i4go_expirationyear || "").toString().slice(-2),
-                                totalAmount: orderData.totalAmount,
+                                totalAmount: data.totalAmount,
                                 invoiceId: orderId
                             })
                         })
-                        .then(async (backendRes) => {
-                            const result = await backendRes.json();
+                        .then(async (r) => {
+                            const result = await r.json();
                             hideLoader();
                             if (result.status === 'success') {
                                 document.getElementById('payment-ui').style.display = 'none';
                                 document.getElementById('success-ui').style.display = 'block';
                             } else {
-                                showError(result.message || "Payment declined.");
-                                initializeCheckout(); 
+                                showError(result.message || "Card declined. Please try another.");
+                                initializeCheckout();
                             }
                         })
                         .catch((err) => {
                             hideLoader();
-                            showError("The payment took too long. Please check your card balance and try again.");
-                            initializeCheckout(); 
+                            // Handles Test 7 (Timeout)
+                            showError("The connection timed out. No charge was made. Please try again.");
+                            initializeCheckout();
                         });
                     },
                     onFailure: function() {
                         hideLoader();
-                        showError("Card Entry Error: Please double-check your numbers.");
+                        showError("Invalid Card: Please check your details.");
                     }
                 });
                 hideLoader();
-            }, 100);
+            };
+            document.head.appendChild(script);
 
         } catch (err) {
             hideLoader();
